@@ -1,5 +1,5 @@
 # FOTP
-the First-order Transition Probability (FOTP) based on the transition probability of adjacent nucleotides in a N bp length at each 5' end of cfDNA fragments.
+The First-order Transition Probability (FOTP) based on the transition probability of adjacent nucleotides in a N bp length at each 5' end of cfDNA fragments.
 
 #step1: extract 10bp end sequences 
 python3 reads_extract_10bp.py -v bins_5MB_clean.bed -i bam_file -s txt
