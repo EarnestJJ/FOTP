@@ -1,0 +1,44 @@
+###LOO_CV for HCC patients in external dataset
+set.seed(1234)
+dim_value <- as.numeric()
+pred_value_cv <- as.numeric()
+FOTP_38H17HBV34HCC <- read.csv(/FOTP/data/FOTP_38H17HBV34HCC.csv",row.names=1) #Patients with HBV were included
+HBV_ID <- c("GM0742","GM0936","GM1196","GM2172","GM2465","GM2471","GM2546","GM2721","GM2822","GM2925",  
+"GM2935","GM3067","GM3071","GM3474","GM3987","GM3999","TBR1372")
+FOTP_38H34HCC <- FOTP_38H17HBV34HCC[-which(rownames(FOTP_38H17HBV34HCC) %in% HBV_ID),] #HBV patients were excluded from this model
+
+i=1
+while(i<=72){
+        fold_train <- FOTP_38H34HCC[-i,]
+        fold_test <- FOTP_38H34HCC[i,]
+        preProcValues = preProcess(fold_train[,-1], method = c("center","scale"))  
+        trainTransformed = as.matrix(predict(preProcValues, fold_train[,-1]))  
+        testTransformed = as.matrix(predict(preProcValues, fold_test[,-1])) 
+        
+        rm1<-cor(trainTransformed)
+        rs1<-eigen(rm1)
+        val <- rs1$values
+        #Standard_deviation <- sqrt(val)
+        Proportion_of_Variance <- val/sum(val)
+        Cumulative_Proportion <- cumsum(Proportion_of_Variance)
+        j <- which(Cumulative_Proportion > 0.99)[1]
+        dim_value <- append(dim_value,as.numeric(j))
+        
+        U <- as.matrix(rs1$vectors)
+        train_PC <- as.data.frame(trainTransformed %*% U)
+        train_PC <- train_PC[,1:j]
+        colnames(train_PC) <- paste0(rep("PC",j),1:j)
+        train_PC <- cbind(fold_train[,1],train_PC)
+        colnames(train_PC)[1] <- "group"
+
+        test_PC <- as.data.frame(testTransformed %*% U)
+        test_PC <- test_PC[,1:j]
+        colnames(test_PC) <- paste0(rep("PC",j),1:j)
+
+        model_train <- svm(group~.,data=train_PC,kernel = "radial")
+        pred_value_cv <- append(pred_value_cv, as.numeric(model_pre))
+ 
+        i=i+1
+}
+roc_svm_pred <- roc(FOTP_38H34HCC$group~pred_value_cv,ci=TRUE,legacy.axes=TRUE,auc = TRUE,print.auc=TRUE)
+plot(roc_svm_pred, print.thres=TRUE, main="external_valid_data",print.auc=TRUE,col="red", print.thres.col="red",identity.lty=2, identity.lwd=2,legacy.axes=TRUE)

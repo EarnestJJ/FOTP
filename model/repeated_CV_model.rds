@@ -1,0 +1,108 @@
+###Repeated cross-validation in Discovery cohort (Training data)
+library(pROC)
+library(caret)
+library(e1071)
+
+set.seed(1234)
+auc_value <- as.numeric()
+dim_value <- as.numeric()
+dat_auc_value <- as.numeric()
+test_raw_value <- as.numeric()
+test_pre_value <- as.numeric()
+
+fold_train_cv <- as.numeric()
+fold_valid_cv <- as.numeric()
+pred_value_cv <- as.numeric()
+sample_name_cv <- as.numeric()
+
+FOTP_HR252LC193_t <- read.csv("/FOTP/data/training dataset/FOTP_10bp.csv",row.names=1)
+trainIndex <- createDataPartition(FOTP_HR252LC193_t$group, p = .8, list = FALSE, times=10) 
+
+for(m in c(1:10)){
+    datTrain <- FOTP_HR252LC193_t[trainIndex[,m],] 
+    datTest  <- FOTP_HR252LC193_t[-trainIndex[,m],]
+    
+    test_raw_value <- append(test_raw_value,as.numeric(datTest$group))
+    
+    
+    folds <-createMultiFolds(y=datTrain$group,k=5,times=20)
+    i=1
+    for(i in c(1:100)){
+        fold_train <- datTrain[folds[[i]],]
+        fold_test <- datTrain[-folds[[i]],]
+        
+        fold_train_cv <- append(fold_train_cv, as.numeric(fold_train$group))
+        fold_valid_cv <- append(fold_valid_cv, as.numeric(fold_test$group))
+        sample_name_cv <- append(sample_name_cv,rownames(fold_test))
+        
+        preProcValues = preProcess(fold_train[,-1], method = c("center","scale"))  #Data preprocessing
+        trainTransformed = as.matrix(predict(preProcValues, fold_train[,-1]))   
+        testTransformed = as.matrix(predict(preProcValues, fold_test[,-1]))  
+        
+        rm1<-cor(trainTransformed)
+        rs1<-eigen(rm1)
+        val <- rs1$values
+        #Standard_deviation <- sqrt(val)
+        Proportion_of_Variance <- val/sum(val)
+        Cumulative_Proportion <- cumsum(Proportion_of_Variance)
+        j <- which(Cumulative_Proportion > 0.99)[1]
+        dim_value <- append(dim_value,as.numeric(j))
+        
+        U <- as.matrix(rs1$vectors)
+        train_PC <- as.data.frame(trainTransformed %*% U)
+        train_PC <- train_PC[,1:j]
+        colnames(train_PC) <- paste0(rep("PC",j),1:j)
+        train_PC <- cbind(fold_train[,1],train_PC)
+        colnames(train_PC)[1] <- "group"
+
+        test_PC <- as.data.frame(testTransformed %*% U)
+        test_PC <- test_PC[,1:j]
+        colnames(test_PC) <- paste0(rep("PC",j),1:j)
+
+        model_train <- svm(group~.,data=train_PC,kernel = "radial")
+        model_pre <- predict(model_train, newdata=test_PC,type='response')
+        pred_value_cv <- append(pred_value_cv, as.numeric(model_pre))
+        auc_value<- append(auc_value,as.numeric(auc(as.numeric(fold_test[,1]),model_pre)))          
+    }
+    print(summary(auc_value))
+    print(mean(auc_value))
+
+    dat_preProcValues = preProcess(datTrain[,-1], method = c("center","scale"))
+    dat_trainTransformed = as.matrix(predict(dat_preProcValues, datTrain[,-1]))  
+    dat_testTransformed = as.matrix(predict(dat_preProcValues, datTest[,-1]))
+    
+    dat_rm1<-cor(dat_trainTransformed)
+    dat_rs1<-eigen(dat_rm1)
+    dat_val <- dat_rs1$values
+    
+    dat_Proportion_of_Variance <- dat_val/sum(dat_val)
+    dat_Cumulative_Proportion <- cumsum(dat_Proportion_of_Variance)
+    n <- which(dat_Cumulative_Proportion > 0.99)[1]   
+    dat_U <- as.matrix(dat_rs1$vectors)
+    dat_train_PC <- as.data.frame(dat_trainTransformed %*% dat_U)
+    dat_train_PC <- dat_train_PC[,1:n]
+    colnames(dat_train_PC) <- paste0(rep("PC",n),1:n)
+    dat_train_PC <- cbind(datTrain[,1],dat_train_PC)
+    colnames(dat_train_PC)[1] <- "group"
+
+    dat_test_PC <- as.data.frame(dat_testTransformed %*% dat_U)
+    dat_test_PC <- dat_test_PC[,1:n]
+    colnames(dat_test_PC) <- paste0(rep("PC",n),1:n)
+    
+    dat_model_train <- svm(group~.,data=dat_train_PC,kernel = "radial")
+    dat_model_pre <- predict(dat_model_train,newdata=dat_test_PC,type='response')
+    test_pre_value <- append(test_pre_value,as.numeric(dat_model_pre))
+    dat_auc_value<- append(dat_auc_value,as.numeric(auc(as.numeric(datTest[,1]),dat_model_pre)))    
+    
+}
+summary(auc_value)
+summary(dat_auc_value)
+
+raw_pred_5cv <- cbind(as.data.frame(fold_valid_cv),as.data.frame(pred_value_cv))
+colnames(raw_pred_5cv) <- c("raw_value_cv","pred_value_cv")
+raw_pred_test <- cbind(as.data.frame(test_raw_value),as.data.frame(test_pre_value))
+colnames(raw_pred_test) <- c("raw_value_test","pred_value_test")
+roc(raw_pred_5cv$raw_value_cv~raw_pred_5cv$pred_value_cv, ci=TRUE,legacy.axes=TRUE,auc = TRUE,print.auc=TRUE)
+roc(raw_pred_test$raw_value_test~raw_pred_test$pred_value_test, ci=TRUE,legacy.axes=TRUE,auc = TRUE,print.auc=TRUE)
+write.table(raw_pred_5cv,file="/FOTP/data/raw_pred_5cv.txt",col.names=T,row.names=F,quote=F)
+write.table(raw_pred_test,file="/FOTP/data/raw_pred_test.txt",col.names=T,row.names=F,quote=F)
